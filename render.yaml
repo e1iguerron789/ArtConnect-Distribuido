@@ -1,117 +1,86 @@
 services:
-  gateway:
-    build: ./gateway
-    ports:
-      - "8080:80"
-    depends_on:
-      web-app:
-        condition: service_started
-      auth-service:
-        condition: service_started
+  # GATEWAY (PUBLIC)
+  - name: artconnect-gateway
+    type: web
+    runtime: docker
+    plan: free
+    dockerContext: ./gateway
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars: []
 
-  web-app:
-    build: ./web-app
-    volumes:
-      - ./web-app:/var/www/html
-      - ./web-app/.env:/var/www/html/.env
-    environment:
-      APP_ENV: local
-      APP_DEBUG: "true"
-      APP_URL: http://localhost:8080
-      DB_CONNECTION: mysql
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_DATABASE: artconnect
-      DB_USERNAME: root
-      DB_PASSWORD: root
-      EVENT_SERVICE_URL: "http://event-service:8000"
-    depends_on:
-      - mysql
-    ports:
-      - "8000:8000"
+  # WEB-APP (PRIVATE)
+  - name: web-app
+    type: pserv
+    runtime: docker
+    plan: free
+    dockerContext: ./web-app
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_URL
+        value: https://artconnect-gateway.onrender.com
 
+      - key: DB_CONNECTION
+        value: mysql
+      - key: DB_HOST
+        value: mysql
+      - key: DB_PORT
+        value: "3306"
+      - key: DB_DATABASE
+        value: artconnect
+      - key: DB_USERNAME
+        value: root
+      - key: DB_PASSWORD
+        sync: false
 
-  auth-service:
-    build: ./auth-service
-    ports:
-      - "8001:8000"
-    volumes:
-      - ./auth-service:/var/www/html
-    env_file:
-      - ./auth-service/.env
-    environment:
-      APP_ENV: local
-      APP_DEBUG: "true"
-      APP_URL: http://localhost:8001
-    depends_on:
-      postgres-auth:
-        condition: service_started
+      - key: EVENT_SERVICE_URL
+        value: http://event-service:8000
 
-  postgres-auth:
-    image: postgres:16
-    ports:
-      - "5433:5432"
-    environment:
-      POSTGRES_DB: auth_db
-      POSTGRES_USER: auth_user
-      POSTGRES_PASSWORD: auth_pass
-    volumes:
-      - pg_auth_data:/var/lib/postgresql/data
+  # AUTH-SERVICE (PRIVATE)
+  - name: auth-service
+    type: pserv
+    runtime: docker
+    plan: free
+    dockerContext: ./auth-service
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
 
-  event-service:
-    build: ./event-service
-    environment:
-      APP_ENV: local
-      APP_DEBUG: "true"
-      APP_URL: http://localhost:8080
+  # EVENT-SERVICE (PRIVATE)
+  - name: event-service
+    type: pserv
+    runtime: docker
+    plan: free
+    dockerContext: ./event-service
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY
+        sync: false
 
-      DB_CONNECTION: pgsql
-      DB_HOST: postgres-events
-      DB_PORT: 5432
-      DB_DATABASE: events_db
-      DB_USERNAME: events_user
-      DB_PASSWORD: events_pass
-    volumes:
-      - ./event-service:/var/www/html
-    env_file:
-      - ./event-service/.env
-    depends_on:
-      - postgres-events
-    command: php artisan serve --host=0.0.0.0 --port=8000 --no-reload
-    ports:
-      - "8002:8000"
-
-  postgres-events:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: events_db
-      POSTGRES_USER: events_user
-      POSTGRES_PASSWORD: events_pass
-    ports:
-      - "5434:5432"
-    volumes:
-      - pg_events_data:/var/lib/postgresql/data
-
-  rabbitmq:
-    image: rabbitmq:3-management
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: artconnect
-      RABBITMQ_DEFAULT_PASS: artconnect
-
-  mysql:
-    image: mysql:8.0
-    ports:
-      - "3307:3306"
-    environment:
-      MYSQL_DATABASE: artconnect
-      MYSQL_ROOT_PASSWORD: root
-    volumes:
-      - mysql_data:/var/lib/mysql
-
-volumes:
-  mysql_data:
-  pg_auth_data:
-  pg_events_data:
+  # MYSQL (PRIVATE)
+  - name: mysql
+    type: pserv
+    runtime: image
+    plan: free
+    image:
+      url: mysql:8.0
+    envVars:
+      - key: MYSQL_DATABASE
+        value: artconnect
+      - key: MYSQL_ROOT_PASSWORD
+        sync: false
